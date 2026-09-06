@@ -3,7 +3,7 @@ import type { CompressionResult, CompressionSettings } from '../types';
 import { WasmProcessingEngine } from './wasm-engine';
 import { WebGPUSimilarity } from './webgpu-similarity';
 
-const SMART_QUALITIES = [95, 92, 90, 87, 85, 82, 80] as const;
+const SMART_QUALITIES = [80, 82, 85, 87, 90, 92, 95] as const;
 
 function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
@@ -58,30 +58,52 @@ export class WebGPUProcessingEngine implements ProcessingEngine {
 
     try {
       const original = new Uint8ClampedArray(prepared.rgba());
-      let fallback: CompressionResult | undefined;
-      let selected: CompressionResult | undefined;
-
-      for (const quality of SMART_QUALITIES) {
+      const evaluate = async (quality: number): Promise<CompressionResult> => {
         const candidateBytes = prepared.encode_lossy(quality);
         const decoded = await rgbaFromBytes(candidateBytes, prepared.width, prepared.height);
-        const similarity = await this.similarity.ssim(original, decoded);
-        const measured: CompressionResult = {
+        const score = await this.similarity!.ssim(original, decoded);
+        return {
           bytes: candidateBytes,
           width: prepared.width,
           height: prepared.height,
           quality,
-          similarity,
+          similarity: score,
           mode: 'smart',
           engine: this.label,
           durationMs: 0,
         };
-        fallback ??= measured;
-        if (similarity >= settings.smartThreshold && (!selected || measured.bytes.byteLength < selected.bytes.byteLength)) selected = measured;
+      };
+
+      // Fast path: if Q80 passes, no larger candidate can improve the target of finding the lowest acceptable quality.
+      const lowest = await evaluate(SMART_QUALITIES[0]);
+      if ((lowest.similarity ?? 0) >= settings.smartThreshold) {
+        return { ...lowest, durationMs: performance.now() - started };
       }
 
-      const result = selected ?? fallback;
-      if (!result) throw new Error('No Smart candidate produced');
-      return { ...result, durationMs: performance.now() - started };
+      // Q95 is both the passing upper bound and the graceful fallback if the threshold is unattainable.
+      const highestIndex = SMART_QUALITIES.length - 1;
+      const highest = await evaluate(SMART_QUALITIES[highestIndex]);
+      if ((highest.similarity ?? 0) < settings.smartThreshold) {
+        return { ...highest, durationMs: performance.now() - started };
+      }
+
+      // Invariant: low fails, high passes. Binary search for the first passing preset.
+      let low = 0;
+      let high = highestIndex;
+      let best = highest;
+
+      while (high - low > 1) {
+        const mid = low + Math.floor((high - low) / 2);
+        const candidate = await evaluate(SMART_QUALITIES[mid]);
+        if ((candidate.similarity ?? 0) >= settings.smartThreshold) {
+          high = mid;
+          best = candidate;
+        } else {
+          low = mid;
+        }
+      }
+
+      return { ...best, durationMs: performance.now() - started };
     } finally {
       prepared.free();
     }

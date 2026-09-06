@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Images, LockKeyhole, Sparkles, Trash2 } from 'lucide-react';
 import { BlobWriter, Uint8ArrayReader, ZipWriter } from '@zip.js/zip.js';
 import { UploadZone } from './components/UploadZone'; import { CompressionControls } from './components/CompressionControls'; import { AdvancedSettings } from './components/AdvancedSettings'; import { EngineBadge } from './components/EngineBadge'; import { BatchStats } from './components/BatchStats'; import { ImageCard } from './components/ImageCard';
-import { ACCEPTED_TYPES, readBrowserMetadata, uniqueWebpNames } from './lib/files'; import { CompressionManager } from './lib/compression-manager'; import type { CompressionMode, CompressionSettings, ImageItem } from './types'; import { useWebGPU } from './hooks/useWebGPU';
+import { ACCEPTED_TYPES, readBrowserMetadata, uniqueWebpNames } from './lib/files'; import { CompressionManager } from './lib/compression-manager'; import type { CompressionMode, CompressionSettings, ImageItem, ResizeOptions } from './types'; import { useWebGPU } from './hooks/useWebGPU';
 
-const defaultResize = { kind:'original', maintainAspectRatio:true, preventEnlargement:true } as const;
+const defaultResize: ResizeOptions = { kind:'original', maintainAspectRatio:true, preventEnlargement:true };
+function ownedBuffer(bytes: Uint8Array): ArrayBuffer { const copy = new Uint8Array(bytes.byteLength); copy.set(bytes); return copy.buffer; }
+
 export default function App() {
   const { available: gpu, checking } = useWebGPU(); const manager = useRef<CompressionManager | null>(null); const itemsRef = useRef<ImageItem[]>([]);
-  const [items,setItems]=useState<ImageItem[]>([]); const [mode,setMode]=useState<CompressionMode>('smart'); const [quality,setQuality]=useState(90); const [auto,setAuto]=useState(false); const [resize,setResize]=useState({...defaultResize});
+  const [items,setItems]=useState<ImageItem[]>([]); const [mode,setMode]=useState<CompressionMode>('smart'); const [quality,setQuality]=useState(90); const [auto,setAuto]=useState(false); const [resize,setResize]=useState<ResizeOptions>({...defaultResize});
   useEffect(()=>{itemsRef.current=items;},[items]);
   useEffect(()=>{ manager.current?.destroy(); manager.current=new CompressionManager(gpu); return()=>{ manager.current?.destroy(); manager.current=null; }; },[gpu]);
   useEffect(()=>()=>itemsRef.current.forEach(i=>URL.revokeObjectURL(i.previewUrl)),[]);
@@ -17,7 +19,7 @@ export default function App() {
   const addFiles=useCallback(async(files:File[])=>{ const valid=files.filter(f=>ACCEPTED_TYPES.has(f.type)); const added:ImageItem[]=valid.map(file=>({id:crypto.randomUUID(),file,previewUrl:URL.createObjectURL(file),meta:null,status:'queued',progress:0})); if(!added.length)return; setItems(xs=>[...xs,...added]); for(const it of added){try{const meta=await readBrowserMetadata(it.file);setItems(xs=>xs.map(x=>x.id===it.id?{...x,meta}:x));}catch{setItems(xs=>xs.map(x=>x.id===it.id?{...x,status:'error',error:'Could not decode image metadata'}:x));}} if(auto) requestAnimationFrame(()=>added.forEach(it=>compressOne(it.id,settings))); },[auto,compressOne,settings]);
   const clear=()=>{items.forEach(i=>URL.revokeObjectURL(i.previewUrl));setItems([]);};
   const remove=(id:string)=>setItems(xs=>{const hit=xs.find(x=>x.id===id);if(hit)URL.revokeObjectURL(hit.previewUrl);return xs.filter(x=>x.id!==id);});
-  const download=(item:ImageItem)=>{if(!item.result)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([item.result.bytes],{type:'image/webp'}));a.download=item.file.name.replace(/\.[^.]+$/,'')+'.webp';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
+  const download=(item:ImageItem)=>{if(!item.result)return;const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([ownedBuffer(item.result.bytes)],{type:'image/webp'}));a.download=item.file.name.replace(/\.[^.]+$/,'')+'.webp';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
   const downloadAll=async()=>{const done=items.filter(i=>i.result);if(!done.length)return;if(done.length===1){download(done[0]);return;}const names=uniqueWebpNames(done.map(i=>i.file));const zip=new ZipWriter(new BlobWriter('application/zip'));for(let i=0;i<done.length;i++)await zip.add(names[i],new Uint8ArrayReader(done[i].result!.bytes));const blob=await zip.close();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='compressed-images.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
   const busy=items.some(i=>i.status==='compressing'); const done=items.filter(i=>i.result).length;
 

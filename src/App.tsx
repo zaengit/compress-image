@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Download, LockKeyhole, Trash2 } from 'lucide-react';
 import { BlobWriter, Uint8ArrayReader, ZipWriter } from '@zip.js/zip.js';
-import { UploadZone } from './components/UploadZone'; import { CompressionControls } from './components/CompressionControls'; import { AdvancedSettings } from './components/AdvancedSettings'; import { EngineBadge } from './components/EngineBadge'; import { BatchStats } from './components/BatchStats'; import { ImageCard } from './components/ImageCard';
+import { UploadZone } from './components/UploadZone'; import { CompressionControls } from './components/CompressionControls'; import { AdvancedSettings } from './components/AdvancedSettings'; import { EngineBadge } from './components/EngineBadge'; import { BatchStats } from './components/BatchStats'; import { ImageCard } from './components/ImageCard'; import { ThemeToggle } from './components/ThemeToggle';
 import { ACCEPTED_TYPES, readBrowserMetadata, uniqueWebpNames } from './lib/files'; import { CompressionManager } from './lib/compression-manager'; import type { CompressionMode, CompressionSettings, ImageItem, ResizeOptions } from './types'; import { useWebGPU } from './hooks/useWebGPU';
 
 const defaultResize: ResizeOptions = { kind:'original', maintainAspectRatio:true, preventEnlargement:true };
@@ -23,13 +23,14 @@ export default function App() {
   const downloadAll=async()=>{const done=items.filter(i=>i.result);if(!done.length)return;if(done.length===1){download(done[0]);return;}const names=uniqueWebpNames(done.map(i=>i.file));const zip=new ZipWriter(new BlobWriter('application/zip'));for(let i=0;i<done.length;i++)await zip.add(names[i],new Uint8ArrayReader(done[i].result!.bytes));const blob=await zip.close();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='compressed-images.zip';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
   const busy=items.some(i=>i.status==='compressing'); const done=items.filter(i=>i.result).length;
 
-  return <main className="min-h-screen bg-[#f4f4f2] px-4 py-4 text-neutral-950 sm:px-6 sm:py-6 lg:px-8 pb-28">
+  return <main className="app-shell theme-surface min-h-screen bg-[#f4f4f2] px-4 py-4 text-neutral-950 transition-colors sm:px-6 sm:py-6 lg:px-8 pb-28">
     <div className="mx-auto max-w-[1440px] space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div className="text-2xl font-extrabold tracking-[-0.04em] text-neutral-950" aria-label="Compress">Compress</div>
         <div className="flex items-center gap-2">
           <span className="hidden items-center gap-1.5 rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-600 sm:inline-flex"><LockKeyhole size={13}/>Local only</span>
           <EngineBadge gpu={gpu} checking={checking}/>
+          <ThemeToggle/>
         </div>
       </div>
 
@@ -58,6 +59,6 @@ export default function App() {
       </section>}
     </div>
 
-    {items.length>0&&<div className="fixed inset-x-0 bottom-0 border-t border-neutral-200 bg-[#f4f4f2]/95 p-3 backdrop-blur"><div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3"><div className="text-sm font-medium text-neutral-500">{done}/{items.length} compressed</div><div className="flex gap-2"><button disabled={busy} onClick={()=>items.filter(i=>i.status!=='compressing').forEach(i=>compressOne(i.id))} className="min-h-11 rounded-xl bg-neutral-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">Compress all</button><button disabled={!done} onClick={downloadAll} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-700 transition hover:border-neutral-950 disabled:cursor-not-allowed disabled:opacity-40"><Download size={16}/>Download all</button></div></div></div>}
+    {items.length>0&&<div className="theme-bottom-bar fixed inset-x-0 bottom-0 border-t border-neutral-200 bg-[#f4f4f2]/95 p-3 backdrop-blur"><div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3"><div className="text-sm font-medium text-neutral-500">{done}/{items.length} compressed</div><div className="flex gap-2"><button disabled={busy} onClick={()=>items.filter(i=>i.status!=='compressing').forEach(i=>compressOne(i.id))} className="min-h-11 rounded-xl bg-neutral-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">Compress all</button><button disabled={!done} onClick={downloadAll} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 py-2.5 text-sm font-semibold text-neutral-700 transition hover:border-neutral-950 disabled:cursor-not-allowed disabled:opacity-40"><Download size={16}/>Download all</button></div></div></div>}
   </main>;
 }

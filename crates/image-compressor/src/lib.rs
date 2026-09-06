@@ -7,6 +7,21 @@ use serde::Deserialize;
 pub struct ResizeOptions { pub kind: String, pub value: Option<u32>, pub maintain_aspect_ratio: bool, pub prevent_enlargement: bool }
 
 #[wasm_bindgen]
+pub struct PreparedImage { rgba: Vec<u8>, width: u32, height: u32 }
+#[wasm_bindgen]
+impl PreparedImage {
+  #[wasm_bindgen(getter)] pub fn width(&self) -> u32 { self.width }
+  #[wasm_bindgen(getter)] pub fn height(&self) -> u32 { self.height }
+  pub fn rgba(&self) -> Vec<u8> { self.rgba.clone() }
+  pub fn encode_lossy(&self, quality: u8) -> Result<Vec<u8>, JsValue> {
+    encoder::lossy_rgba(&self.rgba, self.width, self.height, quality).map_err(js_err)
+  }
+  pub fn encode_lossless(&self) -> Result<Vec<u8>, JsValue> {
+    encoder::lossless_rgba(&self.rgba, self.width, self.height).map_err(js_err)
+  }
+}
+
+#[wasm_bindgen]
 pub struct CompressionOutput { bytes: Vec<u8>, width: u32, height: u32, quality: Option<u8>, similarity: Option<f64> }
 #[wasm_bindgen]
 impl CompressionOutput {
@@ -18,6 +33,15 @@ impl CompressionOutput {
 }
 
 #[wasm_bindgen(start)] pub fn start() { console_error_panic_hook::set_once(); }
+
+#[wasm_bindgen]
+pub fn prepare_image(input: &[u8], resize_json: &str) -> Result<PreparedImage, JsValue> {
+  let decoded = decoder::decode(input).map_err(js_err)?;
+  let opts: ResizeOptions = serde_json::from_str(resize_json).map_err(js_err)?;
+  let image = resize::apply(decoded, &opts).map_err(js_err)?;
+  let rgba = image.to_rgba8();
+  Ok(PreparedImage { width: rgba.width(), height: rgba.height(), rgba: rgba.into_raw() })
+}
 
 #[wasm_bindgen]
 pub fn compress_to_webp(input: &[u8], mode: &str, quality: Option<u8>, smart_threshold: f64, resize_json: &str) -> Result<CompressionOutput, JsValue> {

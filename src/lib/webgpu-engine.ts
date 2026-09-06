@@ -5,9 +5,15 @@ import { WebGPUSimilarity } from './webgpu-similarity';
 
 const SMART_QUALITIES = [95, 92, 90, 87, 85, 82, 80] as const;
 
+function ownedBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 async function rgbaFromBytes(bytes: Uint8Array, width: number, height: number): Promise<Uint8ClampedArray> {
   if (typeof createImageBitmap !== 'function' || typeof OffscreenCanvas === 'undefined') throw new Error('Worker image decode unavailable');
-  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/webp' }));
+  const bitmap = await createImageBitmap(new Blob([ownedBuffer(bytes)], { type: 'image/webp' }));
   try {
     const canvas = new OffscreenCanvas(width, height);
     const context = canvas.getContext('2d', { willReadFrequently: true });

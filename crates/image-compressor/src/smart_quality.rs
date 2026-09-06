@@ -1,9 +1,39 @@
-use image::DynamicImage; use crate::{encoder,similarity};
-pub struct SmartResult{pub bytes:Vec<u8>,pub quality:u8,pub similarity:f64}
-pub fn compress(original:&DynamicImage,threshold:f64)->Result<SmartResult,String>{
- let qualities=[95u8,92,90,87,85,82,80]; let mut candidates=Vec::new();
- for q in qualities{let bytes=encoder::lossy(original,q)?;let decoded=image::load_from_memory_with_format(&bytes,image::ImageFormat::WebP).map_err(|e|e.to_string())?;let s=similarity::ssim(original,&decoded)?;candidates.push(SmartResult{bytes,quality:q,similarity:s});}
- let mut passing:Vec<_>=candidates.into_iter().filter(|c|c.similarity>=threshold).collect();
- if passing.is_empty(){let bytes=encoder::lossy(original,95)?;let decoded=image::load_from_memory_with_format(&bytes,image::ImageFormat::WebP).map_err(|e|e.to_string())?;return Ok(SmartResult{similarity:similarity::ssim(original,&decoded)?,bytes,quality:95})}
- passing.sort_by_key(|c|c.bytes.len()); Ok(passing.remove(0))
+use image::{DynamicImage, RgbaImage};
+use crate::{encoder, similarity};
+
+pub struct SmartResult { pub bytes: Vec<u8>, pub quality: u8, pub similarity: f64 }
+
+pub fn compress(original: &DynamicImage, threshold: f64) -> Result<SmartResult, String> {
+    let rgba = original.to_rgba8();
+    let reference = DynamicImage::ImageRgba8(RgbaImage::from_raw(
+        original.width(),
+        original.height(),
+        rgba.as_raw().clone(),
+    ).ok_or_else(|| "Failed to build Smart reference image".to_string())?);
+
+    let qualities = [95u8, 92, 90, 87, 85, 82, 80];
+    let mut fallback: Option<SmartResult> = None;
+    let mut selected: Option<SmartResult> = None;
+
+    for q in qualities {
+        let bytes = encoder::lossy_rgba(rgba.as_raw(), original.width(), original.height(), q)?;
+        let decoded = image::load_from_memory_with_format(&bytes, image::ImageFormat::WebP)
+            .map_err(|e| e.to_string())?;
+        let score = similarity::ssim(&reference, &decoded)?;
+        let candidate = SmartResult { bytes, quality: q, similarity: score };
+
+        if fallback.is_none() {
+            fallback = Some(SmartResult {
+                bytes: candidate.bytes.clone(),
+                quality: candidate.quality,
+                similarity: candidate.similarity,
+            });
+        }
+
+        if score >= threshold && selected.as_ref().map_or(true, |best| candidate.bytes.len() < best.bytes.len()) {
+            selected = Some(candidate);
+        }
+    }
+
+    selected.or(fallback).ok_or_else(|| "No Smart candidate produced".to_string())
 }

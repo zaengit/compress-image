@@ -51,12 +51,18 @@ Open the Vite URL shown in the terminal.
 ## Production build
 
 ```bash
-npm ci
+npm install
 npm run build
 npm run preview
 ```
 
 `npm run build` builds the Rust crate into `src/wasm/`, type-checks TypeScript, then creates the Vite production bundle in `dist/`.
+
+> The repository currently does not commit a `package-lock.json`, so use `npm install` rather than `npm ci`. Once a lockfile is committed, CI and production installs should switch to `npm ci` for fully locked dependency resolution.
+
+## Continuous integration
+
+GitHub Actions runs on pushes to `main` and pull requests. CI installs Node.js and Rust, checks the Rust crate for the `wasm32-unknown-unknown` target, builds the WASM package with `wasm-pack`, type-checks the React application, and produces the Vite production bundle.
 
 ## Rust/WASM only
 

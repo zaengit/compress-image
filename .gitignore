@@ -1,0 +1,8 @@
+node_modules
+dist
+.DS_Store
+src/wasm/*.wasm
+src/wasm/*.js
+src/wasm/*.d.ts
+src/wasm/package.json
+target

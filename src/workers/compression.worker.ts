@@ -21,7 +21,9 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const active = await getEngine(req.preferWebGPU);
     self.postMessage({ id: req.id, type: 'progress', progress: 35 } satisfies WorkerResponse);
     const result = await active.compress(new Uint8Array(req.input), req.settings);
-    const bytes = result.bytes.buffer.slice(result.bytes.byteOffset, result.bytes.byteOffset + result.bytes.byteLength);
+    const copy = new Uint8Array(result.bytes.byteLength);
+    copy.set(result.bytes);
+    const bytes = copy.buffer;
     self.postMessage({ id: req.id, type: 'result', result: { ...result, bytes } } satisfies WorkerResponse, [bytes]);
   } catch (error) {
     self.postMessage({ id: req.id, type: 'error', error: error instanceof Error ? error.message : String(error) } satisfies WorkerResponse);

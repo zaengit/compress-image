@@ -1,3 +1,38 @@
 use image::{DynamicImage, GenericImageView};
-/// Global luminance SSIM. Kept behind this module so a windowed SSIM/MS-SSIM implementation can replace it later.
-pub fn ssim(a:&DynamicImage,b:&DynamicImage)->Result<f64,String>{if a.dimensions()!=b.dimensions(){return Err("SSIM dimensions differ".into())}let aa=a.to_luma8();let bb=b.to_luma8();let n=aa.len() as f64;if n<2.0{return Ok(1.0)};let ma=aa.iter().map(|p|p[0] as f64).sum::<f64>()/n;let mb=bb.iter().map(|p|p[0] as f64).sum::<f64>()/n;let mut va=0.0;let mut vb=0.0;let mut cov=0.0;for(i,j)in aa.iter().zip(bb.iter()){let da=i[0]as f64-ma;let db=j[0]as f64-mb;va+=da*da;vb+=db*db;cov+=da*db;}va/=n-1.0;vb/=n-1.0;cov/=n-1.0;let c1=(0.01_f64*255.0).powi(2);let c2=(0.03_f64*255.0).powi(2);Ok(((2.0*ma*mb+c1)*(2.0*cov+c2))/((ma*ma+mb*mb+c1)*(va+vb+c2)))}
+
+/// Global luminance SSIM. Kept behind this module so a windowed SSIM/MS-SSIM
+/// implementation can replace it later without changing callers.
+pub fn ssim(a: &DynamicImage, b: &DynamicImage) -> Result<f64, String> {
+    if a.dimensions() != b.dimensions() {
+        return Err("SSIM dimensions differ".into());
+    }
+
+    let aa = a.to_luma8();
+    let bb = b.to_luma8();
+    let n = aa.len() as f64;
+    if n < 2.0 {
+        return Ok(1.0);
+    }
+
+    let ma = aa.iter().map(|&p| p as f64).sum::<f64>() / n;
+    let mb = bb.iter().map(|&p| p as f64).sum::<f64>() / n;
+    let mut va = 0.0;
+    let mut vb = 0.0;
+    let mut cov = 0.0;
+
+    for (&i, &j) in aa.iter().zip(bb.iter()) {
+        let da = i as f64 - ma;
+        let db = j as f64 - mb;
+        va += da * da;
+        vb += db * db;
+        cov += da * db;
+    }
+
+    va /= n - 1.0;
+    vb /= n - 1.0;
+    cov /= n - 1.0;
+    let c1 = (0.01_f64 * 255.0).powi(2);
+    let c2 = (0.03_f64 * 255.0).powi(2);
+    Ok(((2.0 * ma * mb + c1) * (2.0 * cov + c2))
+        / ((ma * ma + mb * mb + c1) * (va + vb + c2)))
+}

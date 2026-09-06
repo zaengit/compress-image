@@ -10,7 +10,8 @@ A production-oriented, privacy-first browser image compressor built with React, 
 - Custom WebP quality from 1–100.
 - Optional pre-encode resize.
 - Worker pool capped at `min(hardwareConcurrency - 1, 4)`.
-- Automatic WebGPU availability detection with transparent WASM CPU fallback.
+- Automatic WebGPU detection with transparent WASM CPU fallback.
+- WebGPU compute shader acceleration for Smart-mode luminance statistics and SSIM when supported.
 - Individual downloads and ZIP download with duplicate-safe names.
 - No server upload: images stay in the browser.
 
@@ -24,13 +25,14 @@ CompressionManager
 Web Worker pool
   ↓
 ProcessingEngine
-  ├─ WebGPUProcessingEngine (hybrid GPU readiness + WASM codec)
+  ├─ WebGPUProcessingEngine
+  │    ├─ WGSL compute: Smart SSIM statistics
+  │    └─ Rust/WASM: WebP codec
   └─ WasmProcessingEngine
-  ↓
-Rust decoder / resize / WebP encoder / Smart SSIM search
+       └─ Rust/WASM: decode / resize / WebP / CPU SSIM
 ```
 
-WebGPU is deliberately not claimed as the WebP codec: browsers do not expose a WebGPU-native WebP encoder. The abstraction is ready for compute shaders for resize/SSIM as they become measurably beneficial, while Rust/WASM owns deterministic image codec work today.
+WebGPU is deliberately not claimed as the WebP codec: browsers do not expose a WebGPU-native WebP encoder. In Smart mode, the GPU path performs parallel luminance/statistical reduction in WGSL and sends only per-workgroup aggregates back to JavaScript for the final SSIM calculation. If device creation, shader execution, image decode, or GPU readback fails, processing falls back to the existing Rust/WASM Smart implementation without failing the image.
 
 ## Prerequisites
 
@@ -72,7 +74,15 @@ wasm-pack build crates/image-compressor --target web --out-dir ../../src/wasm --
 
 ## Smart quality details
 
-The original image is decoded once and kept in memory. Each Smart candidate is encoded to WebP, decoded, and compared against the decoded original through the `similarity` module. The current implementation uses luminance SSIM behind a replaceable interface; windowed SSIM, MS-SSIM, or another perceptual metric can be added later without changing the UI or manager layer.
+### WASM CPU path
+
+Rust decodes the source once, encodes each candidate, decodes it, and evaluates luminance SSIM through the replaceable `similarity` module.
+
+### WebGPU path
+
+The worker encodes the same Smart candidate qualities through Rust/WASM, decodes candidate pixels with browser image primitives, and compares them to the resized source using a WGSL compute shader. Each workgroup reduces pixel data into sums for luminance, squared luminance, and cross-products; JavaScript performs only the small final aggregate-to-SSIM calculation. The smallest candidate meeting the threshold is selected, or Q95 if none pass.
+
+The similarity layer remains isolated so windowed SSIM, MS-SSIM, or another perceptual metric can replace the current global luminance SSIM later.
 
 ## Privacy
 

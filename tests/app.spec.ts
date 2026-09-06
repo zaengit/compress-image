@@ -1,11 +1,11 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP8z8DAwMDAxMDAwMAAAAwAAf6nB1EAAAAASUVORK5CYII=',
   'base64',
 );
 
-async function upload(page: Parameters<typeof test>[0] extends never ? never : any, names: string[]) {
+async function upload(page: Page, names: string[]) {
   await page.locator('input[type="file"]').setInputFiles(
     names.map((name) => ({ name, mimeType: 'image/png', buffer: png })),
   );

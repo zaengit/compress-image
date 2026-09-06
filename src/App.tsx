@@ -9,7 +9,7 @@ function ownedBuffer(bytes: Uint8Array): ArrayBuffer { const copy = new Uint8Arr
 
 export default function App() {
   const { available: gpu, checking } = useWebGPU(); const manager = useRef<CompressionManager | null>(null); const itemsRef = useRef<ImageItem[]>([]);
-  const [items,setItems]=useState<ImageItem[]>([]); const [mode,setMode]=useState<CompressionMode>('smart'); const [quality,setQuality]=useState(90); const [auto,setAuto]=useState(false); const [resize,setResize]=useState<ResizeOptions>({...defaultResize});
+  const [items,setItems]=useState<ImageItem[]>([]); const [mode,setMode]=useState<CompressionMode>('custom'); const [quality,setQuality]=useState(85); const [auto,setAuto]=useState(false); const [resize,setResize]=useState<ResizeOptions>({...defaultResize});
   useEffect(()=>{itemsRef.current=items;},[items]);
   useEffect(()=>{ manager.current?.destroy(); manager.current=new CompressionManager(gpu); return()=>{ manager.current?.destroy(); manager.current=null; }; },[gpu]);
   useEffect(()=>()=>itemsRef.current.forEach(i=>URL.revokeObjectURL(i.previewUrl)),[]);

@@ -7,7 +7,7 @@ const SMART_QUALITIES = [95, 92, 90, 87, 85, 82, 80] as const;
 
 async function rgbaFromBytes(bytes: Uint8Array, width: number, height: number): Promise<Uint8ClampedArray> {
   if (typeof createImageBitmap !== 'function' || typeof OffscreenCanvas === 'undefined') throw new Error('Worker image decode unavailable');
-  const bitmap = await createImageBitmap(new Blob([bytes]));
+  const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/webp' }));
   try {
     const canvas = new OffscreenCanvas(width, height);
     const context = canvas.getContext('2d', { willReadFrequently: true });
@@ -17,7 +17,7 @@ async function rgbaFromBytes(bytes: Uint8Array, width: number, height: number): 
   } finally { bitmap.close(); }
 }
 
-/** Hybrid engine: WebGPU accelerates Smart-mode pixel statistics/SSIM while Rust/WASM owns WebP codec work. */
+/** Hybrid engine: WebGPU accelerates Smart-mode SSIM while Rust/WASM owns decode, resize and WebP encoding. */
 export class WebGPUProcessingEngine implements ProcessingEngine {
   readonly label = 'WebGPU + WASM' as const;
   private device?: GPUDevice;
@@ -48,23 +48,37 @@ export class WebGPUProcessingEngine implements ProcessingEngine {
   private async compressSmart(input: Uint8Array, settings: CompressionSettings): Promise<CompressionResult> {
     if (!this.similarity) throw new Error('WebGPU similarity unavailable');
     const started = performance.now();
-    let original: Uint8ClampedArray | undefined;
-    let fallback: CompressionResult | undefined;
-    let selected: CompressionResult | undefined;
+    const prepared = await this.wasm.prepare(input, settings.resize);
 
-    for (const quality of SMART_QUALITIES) {
-      const candidate = await this.wasm.compress(input, { ...settings, mode: 'custom', quality });
-      original ??= await rgbaFromBytes(input, candidate.width, candidate.height);
-      const decoded = await rgbaFromBytes(candidate.bytes, candidate.width, candidate.height);
-      const similarity = await this.similarity.ssim(original, decoded);
-      const measured: CompressionResult = { ...candidate, mode: 'smart', quality, similarity, engine: this.label };
-      fallback ??= measured;
-      if (similarity >= settings.smartThreshold && (!selected || measured.bytes.byteLength < selected.bytes.byteLength)) selected = measured;
+    try {
+      const original = new Uint8ClampedArray(prepared.rgba());
+      let fallback: CompressionResult | undefined;
+      let selected: CompressionResult | undefined;
+
+      for (const quality of SMART_QUALITIES) {
+        const candidateBytes = prepared.encode_lossy(quality);
+        const decoded = await rgbaFromBytes(candidateBytes, prepared.width, prepared.height);
+        const similarity = await this.similarity.ssim(original, decoded);
+        const measured: CompressionResult = {
+          bytes: candidateBytes,
+          width: prepared.width,
+          height: prepared.height,
+          quality,
+          similarity,
+          mode: 'smart',
+          engine: this.label,
+          durationMs: 0,
+        };
+        fallback ??= measured;
+        if (similarity >= settings.smartThreshold && (!selected || measured.bytes.byteLength < selected.bytes.byteLength)) selected = measured;
+      }
+
+      const result = selected ?? fallback;
+      if (!result) throw new Error('No Smart candidate produced');
+      return { ...result, durationMs: performance.now() - started };
+    } finally {
+      prepared.free();
     }
-
-    const result = selected ?? fallback;
-    if (!result) throw new Error('No Smart candidate produced');
-    return { ...result, mode: 'smart', engine: this.label, durationMs: performance.now() - started };
   }
 }
 

@@ -54,11 +54,11 @@ export class WebGPUProcessingEngine implements ProcessingEngine {
 
     for (const quality of SMART_QUALITIES) {
       const candidate = await this.wasm.compress(input, { ...settings, mode: 'custom', quality });
-      fallback ??= candidate;
       original ??= await rgbaFromBytes(input, candidate.width, candidate.height);
       const decoded = await rgbaFromBytes(candidate.bytes, candidate.width, candidate.height);
       const similarity = await this.similarity.ssim(original, decoded);
       const measured: CompressionResult = { ...candidate, mode: 'smart', quality, similarity, engine: this.label };
+      fallback ??= measured;
       if (similarity >= settings.smartThreshold && (!selected || measured.bytes.byteLength < selected.bytes.byteLength)) selected = measured;
     }
 

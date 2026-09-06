@@ -24,6 +24,7 @@ export interface CompressionResult {
   height: number;
   quality: number | null;
   similarity: number | null;
+  mode: CompressionMode;
   engine: EngineLabel;
   durationMs: number;
 }

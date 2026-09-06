@@ -17,7 +17,7 @@ export class WasmProcessingEngine implements ProcessingEngine {
     return {
       bytes: result.bytes(), width: result.width, height: result.height,
       quality: result.quality ?? null, similarity: result.similarity ?? null,
-      engine: this.label, durationMs: performance.now() - started,
+      mode: settings.mode, engine: this.label, durationMs: performance.now() - started,
     };
   }
 }
